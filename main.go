@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
-
+	"os"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 )
@@ -12,17 +12,36 @@ import (
 var rdb *redis.Client
 var ctx = context.Background()
 
-func init() {
-	// Configuração do cliente Redis
-	rdb = redis.NewClient(&redis.Options{
-		Addr: "localhost:6379", // Endereço padrão do Redis
-	})
+// func init() {
+// 	// Configuração do cliente Redis
+// 	rdb = redis.NewClient(&redis.Options{
+// 		Addr: "localhost:6379", // Endereço padrão do Redis
+// 	})
 
-	// Verificar conexão
-	_, err := rdb.Ping(ctx).Result()
-	if err != nil {
-		log.Fatalf("Could not connect to Redis: %v", err)
-	}
+// 	// Verificar conexão
+// 	_, err := rdb.Ping(ctx).Result()
+// 	if err != nil {
+// 		log.Fatalf("Could not connect to Redis: %v", err)
+// 	}
+// }
+
+func init() {
+    // Obter o endereço do Redis da variável de ambiente
+    redisAddr := os.Getenv("REDIS_ADDR")
+    if redisAddr == "" {
+        redisAddr = "localhost:6379" // Valor padrão
+    }
+
+    // Configuração do cliente Redis
+    rdb = redis.NewClient(&redis.Options{
+        Addr: redisAddr,
+    })
+
+    // Verificar conexão
+    _, err := rdb.Ping(ctx).Result()
+    if err != nil {
+        log.Fatalf("Could not connect to Redis: %v", err)
+    }
 }
 
 func main() {
@@ -50,16 +69,24 @@ func setKey(c *gin.Context) {
 }
 
 func getKey(c *gin.Context) {
-	key := c.Param("key")
+    // Obter o parâmetro "key" da URL (ex: /get/myKey)
+    key := c.Param("key")
 
-	value, err := rdb.Get(ctx, key).Result()
-	if err == redis.Nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Key not found"})
-		return
-	} else if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
+    // Tenta obter o valor associado à chave do Redis
+    value, err := rdb.Get(ctx, key).Result()
 
-	c.JSON(http.StatusOK, gin.H{"key": key, "value": value})
+    // Verifica se a chave não existe
+    if err == redis.Nil {
+        // Se a chave não for encontrada, retorna um 404 Not Found
+        c.JSON(http.StatusNotFound, gin.H{"error": "Key not found"})
+        return
+    } else if err != nil {
+        // Se houver outro erro (conexão, etc), retorna um erro de servidor
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    // Se a chave for encontrada, retorna o valor com um status 200 OK
+    c.JSON(http.StatusOK, gin.H{"key": key, "value": value})
 }
+
